@@ -21,7 +21,7 @@ Please download the datasets and pretrained models.
 
 The original label of BDD-OIA is written in json format, while our model uses pkl. So, after downloading, please use `convert_json_to_pkl.ipynb` to convert the json to pkl format and merge the action and reason file.
 
-Then, make `data`, `models`, `out` folders, and store the downloaded data to `data`, the pretrained models to `models` (`out` is used to store results).
+Then, make `data`, `models`, `out` folders, and store the downloaded data to `data` and the pretrained models to `models` (`out` is used to store results).
 
 
 ### Examples of Execution (CBM-AUC)
