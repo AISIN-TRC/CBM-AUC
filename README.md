@@ -34,7 +34,7 @@ python main_bdd.py --train --cuda --load_model --h_type fcc --epochs 5 --batch_s
 If you want to full train, please change the epoch number according to our paper.
 
 # Citation
-Sawada, Yoshihide, and Keigo Nakamura. "[Concept Bottleneck Model with Additional Unsupervised Concepts](https://ieeexplore.ieee.org/abstract/document/9758745)". IEEE Access (2022).
+Yoshihide Sawada, and Keigo Nakamura. "[Concept Bottleneck Model with Additional Unsupervised Concepts](https://ieeexplore.ieee.org/abstract/document/9758745)". IEEE Access (2022).
 
 # Commercial License
 The open source license is in [LICENSE](./LICENSE) file. This software is also available for licensing via [AISIN Corp](https://www.aisin.com/).
