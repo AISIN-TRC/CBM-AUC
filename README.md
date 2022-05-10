@@ -27,10 +27,11 @@ Then, make `data`, `models`, `out` folders, and store the downloaded data to `da
 ### Examples of Execution (CBM-AUC)
 ```bash
 # CUB-200-2011
-python main_cub.py --train --cuda --load_model --h_type fcc --epochs 50 --batch_size 64 --nconcepts 128 --nconcepts_labeled 112 --h_sparsity 7 --opt sgd --lr 0.001 --weight_decay 0.00004 --h_labeled_param 1.0 --theta_reg_lambda 0.001 --info_hypara 0.5
+python main_cub.py --train --cuda --load_model --h_type fcc --epochs 5 --batch_size 64 --nconcepts 128 --nconcepts_labeled 112 --h_sparsity 7 --opt sgd --lr 0.001 --weight_decay 0.00004 --h_labeled_param 1.0 --theta_reg_lambda 0.001 --info_hypara 0.5
 # BDD-OIA
-python main_bdd.py --train --cuda --load_model --h_type fcc --epochs 50 --batch_size 16 --nconcepts 30 --nconcepts_labeled 21 --h_sparsity 7 --opt adam --lr 0.001 --weight_decay 0.00004 --h_labeled_param 1.0 --theta_reg_lambda 0.001 --info_hypara 0.5 --obj bce
+python main_bdd.py --train --cuda --load_model --h_type fcc --epochs 5 --batch_size 16 --nconcepts 30 --nconcepts_labeled 21 --h_sparsity 7 --opt adam --lr 0.001 --weight_decay 0.00004 --h_labeled_param 1.0 --theta_reg_lambda 0.001 --info_hypara 0.5 --obj bce
 ```
+If you want to full train, please change epoch number.
 
 # Citation
 Sawada, Yoshihide, and Keigo Nakamura. "[Concept Bottleneck Model with Additional Unsupervised Concepts](https://ieeexplore.ieee.org/abstract/document/9758745)". IEEE Access (2022).
