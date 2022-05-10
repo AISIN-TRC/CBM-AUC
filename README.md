@@ -29,7 +29,7 @@ Then, make `data`, `models`, `out` folders, and store the downloaded data to `da
 # CUB-200-2011
 python main_cub.py --train --cuda --load_model --h_type fcc --epochs 50 --batch_size 64 --nconcepts 128 --nconcepts_labeled 112 --h_sparsity 7 --opt sgd --lr 0.001 --weight_decay 0.00004 --h_labeled_param 1.0 --theta_reg_lambda 0.001 --info_hypara 0.5
 # BDD-OIA
-python main_bdd.py --train --cuda --load_model --h_type fcc --epochs 50 --batch_size 16 --nconcepts 30 --nconcepts_labeled 21 --h_sparsity 2 --opt adam --lr 0.0001 --weight_decay 0.0001 --h_labeled_param 1.0 --theta_reg_lambda 0.01 --info_hypara 1.0 --obj mse
+python main_bdd.py --train --cuda --load_model --h_type fcc --epochs 50 --batch_size 16 --nconcepts 30 --nconcepts_labeled 21 --h_sparsity 7 --opt adam --lr 0.001 --weight_decay 0.00004 --h_labeled_param 1.0 --theta_reg_lambda 0.001 --info_hypara 0.5 --obj bce
 ```
 
 # Citation
