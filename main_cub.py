@@ -37,7 +37,7 @@ from CUB.template_model import inception_v3
 from models import GSENN
 from conceptizers_CUB import image_fcc_conceptizer, image_cnn_conceptizer
 from parametrizers import image_parametrizer, dfc_parametrizer
-from aggregators import additive_scalar_aggregator
+from aggregators import additive_scalar_aggregator, CBM_aggregator
 from trainers_CUB import GradPenaltyTrainer
 
 
@@ -141,8 +141,8 @@ def main():
     """    
     # only "fcc" conceptizer use, otherwise cannot use (not modifile so as to fit this task...)
     if args.h_type == "fcc":
-        conceptizer1  = image_fcc_conceptizer(2048, args.nconcepts, args.nconcepts_labeled, args.concept_dim, args.h_sparsity)
-        conceptizer2  = image_fcc_conceptizer(768, args.nconcepts, args.nconcepts_labeled, args.concept_dim, args.h_sparsity)
+        conceptizer1  = image_fcc_conceptizer(2048, args.nconcepts, args.nconcepts_labeled, args.concept_dim, args.h_sparsity, args.senn)
+        conceptizer2  = image_fcc_conceptizer(768, args.nconcepts, args.nconcepts_labeled, args.concept_dim, args.h_sparsity, args.senn)
     elif args.h_type == 'cnn':
         conceptizer  = image_cnn_conceptizer(28*28, args.nconcepts, args.nconcepts_labeled, args.concept_dim, args.h_sparsity)
         print("[ERROR] please use fcc network")
@@ -158,9 +158,14 @@ def main():
     parametrizer2 = dfc_parametrizer(768,512,256,128,buf,args.nconcepts, args.theta_dim,layers=3)
 
     """
+    If you train CBM model, set cbm, <python main_cub.py --cbm>.
+    In this case, our model does not use unknown concepts even if you set the number of unknown concepts.
     NOTE: # of unknown concepts = args.nconcepts - args.nconcepts_labeled
     """
-    aggregator = additive_scalar_aggregator(args.concept_dim, args.nclasses)
+    if args.cbm == True:
+        aggregator = CBM_aggregator(args.concept_dim, args.nclasses, args.nconcepts_labeled)
+    else:
+        aggregator = additive_scalar_aggregator(args.concept_dim, args.nclasses)
 
     # you should set load_model as True. If you set, you can use inception v.3 as the encoder, otherwise end.
     if args.load_model:
@@ -177,8 +182,8 @@ def main():
     model: model using outputs of inception v.3
     model_aux: mdoel using auxiliary output of inception v.3
     """
-    model = GSENN(conceptizer1, parametrizer1, aggregator) 
-    model_aux = GSENN(conceptizer2, parametrizer2, aggregator) 
+    model = GSENN(conceptizer1, parametrizer1, aggregator, args.cbm, args.senn) 
+    model_aux = GSENN(conceptizer2, parametrizer2, aggregator, args.cbm, args.senn) 
     
     # send models to device you want to use
     model = model.to(device)

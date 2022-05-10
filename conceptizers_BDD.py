@@ -92,7 +92,7 @@ class image_fcc_conceptizer(AutoEncoder):
     Return:
         None
     """
-    def __init__(self, din, nconcept, nconcept_labeled, cdim, sparsity):
+    def __init__(self, din, nconcept, nconcept_labeled, cdim, sparsity, senn):
         super(image_fcc_conceptizer, self).__init__()
         
         # set self hyperparameters
@@ -106,14 +106,18 @@ class image_fcc_conceptizer(AutoEncoder):
         self.nconcept = nconcept   # Number of all concepts
         self.nconcept_labeled = nconcept_labeled # Number of unknown concepts
 
+        self.senn = senn # flag of senn
         
         """
         encoding
         self.enc1: encoder for known concepts
         self.enc2: encoder for unknown concepts
         """
-        self.enc1 = nn.Linear(self.din, self.nconcept_labeled)
-        self.enc2 = nn.Linear(self.din, self.nconcept-self.nconcept_labeled)
+        if senn == True:
+            self.enc = nn.Linear(self.din, self.nconcept)
+        else:
+            self.enc1 = nn.Linear(self.din, self.nconcept_labeled)
+            self.enc2 = nn.Linear(self.din, self.nconcept-self.nconcept_labeled)
 
         # discriminator (DeepInfoMax; to maximize the mutual information)
         self.dec1 = nn.Linear(self.nconcept+self.din, 512)
@@ -136,34 +140,61 @@ class image_fcc_conceptizer(AutoEncoder):
         # resize
         p = x.view(x.size(0), -1)
         
-        # compute known concepts, we find thatleaky_relu was the best activation
+        if self.senn == True:
+            # compute unknown concepts
+            encoded = self.enc(p)
 
-        #For MNNIST and CUB-200-2011
-        #encoded_1 = F.leaky_relu(self.enc1(p))
+            """
+            kWTA: https://github.com/a554b554/kWTA-Activation/
+            Winner-take-all (WTA) is a computational principle applied in computational models of neural networks 
+            by which neurons in a layer compete with each other for activation, which originated decades ago. 
+            k-WTA is a natural extension of WTA that retains the k largest values of an input vector 
+            and sets all others to be zero before feeding the vector to the next network layer
 
-        #For BDD-OIA
-        encoded_1 = F.sigmoid(self.enc1(p))
+            By using this activation, it is easy to control the unknown concepts we use to classify
+            """
+            k = self.sparsity
+            topval = encoded.topk(k,dim=1)[0][:,-1]
+            topval = topval.expand(encoded.shape[1],encoded.shape[0]).permute(1,0)
+            comp = (encoded>=topval).to(encoded)
+            encoded = comp*encoded
 
-        # compute unknown concepts
-        encoded_2 = self.enc2(p)
+            # reshape for the following process
+            encoded = encoded.reshape([encoded.shape[0],encoded.shape[1],1])
+            
+            # aling the return's shape
+            encoded_1 = encoded
+            encoded_2 = encoded
+            
+        else:
+            # compute known concepts, we find thatleaky_relu was the best activation
 
-        """
-        kWTA: https://github.com/a554b554/kWTA-Activation/
-        Winner-take-all (WTA) is a computational principle applied in computational models of neural networks 
-        by which neurons in a layer compete with each other for activation, which originated decades ago. 
-        k-WTA is a natural extension of WTA that retains the k largest values of an input vector 
-        and sets all others to be zero before feeding the vector to the next network layer
+            #For MNNIST and CUB-200-2011
+            #encoded_1 = F.leaky_relu(self.enc1(p))
 
-        By using this activation, it is easy to control the unknown concepts we use to classify
-        """
-        k = self.sparsity
-        topval = encoded_2.topk(k,dim=1)[0][:,-1]
-        topval = topval.expand(encoded_2.shape[1],encoded_2.shape[0]).permute(1,0)
-        comp = (encoded_2>=topval).to(encoded_2)
-        encoded_2 = comp*encoded_2
+            #For BDD-OIA
+            encoded_1 = F.sigmoid(self.enc1(p))
 
-        # reshape for the following process
-        encoded_2 = encoded_2.reshape([encoded_2.shape[0],encoded_2.shape[1],1])
+            # compute unknown concepts
+            encoded_2 = self.enc2(p)
+            
+            """
+            kWTA: https://github.com/a554b554/kWTA-Activation/
+            Winner-take-all (WTA) is a computational principle applied in computational models of neural networks 
+            by which neurons in a layer compete with each other for activation, which originated decades ago. 
+            k-WTA is a natural extension of WTA that retains the k largest values of an input vector 
+            and sets all others to be zero before feeding the vector to the next network layer
+
+            By using this activation, it is easy to control the unknown concepts we use to classify
+            """
+            k = self.sparsity
+            topval = encoded_2.topk(k,dim=1)[0][:,-1]
+            topval = topval.expand(encoded_2.shape[1],encoded_2.shape[0]).permute(1,0)
+            comp = (encoded_2>=topval).to(encoded_2)
+            encoded_2 = comp*encoded_2
+
+            # reshape for the following process
+            encoded_2 = encoded_2.reshape([encoded_2.shape[0],encoded_2.shape[1],1])
 
         return encoded_1, encoded_2
 
@@ -184,8 +215,11 @@ class image_fcc_conceptizer(AutoEncoder):
     def decode(self, x, z1_list, z2):
         
         # reshape for concatenate (known and unknown concepts)
-        z2 = z2.reshape([z2.shape[0],z2.shape[1]])
-        z  = torch.cat((z1_list,z2),dim=1)
+        if self.senn == True:
+            z = z2.reshape([z2.shape[0],z2.shape[1]])
+        else:
+            z2 = z2.reshape([z2.shape[0],z2.shape[1]])
+            z  = torch.cat((z1_list,z2),dim=1)
 
         # concatenate (encoded output and predicted concepts)
         z = torch.cat((x,z),dim=1)

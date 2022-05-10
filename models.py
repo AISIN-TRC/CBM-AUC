@@ -39,11 +39,15 @@ class GSENN(nn.Module):
         conceptizer: network to output (known+unknown) concepts
         parametrizer: network to output weights of concepts
         aggregator: aggregation to output predicted task class
+        cbm (bool): True if you use CBM model, otherwise False, if True, aggregator f is the linear function
+                    not using parametrizer and unknown concepts
     Return:
         None
     """
-    def __init__(self, conceptizer, parametrizer, aggregator):
+    def __init__(self, conceptizer, parametrizer, aggregator, cbm, senn):
         super(GSENN, self).__init__()
+        self.cbm = cbm
+        self.senn = senn
         self.conceptizer = conceptizer
         self.parametrizer = parametrizer
         self.aggregator = aggregator
@@ -56,7 +60,7 @@ class GSENN(nn.Module):
     Inputs:
         x: output of encoder (inception v.3)
     Return:
-        out: f( c(e(x)), theta(e(x)) )
+        out: f( c(e(x)), theta(e(x)) ) or CBM version f( c(e(x)) )
     """
     def forward(self, x):
 
@@ -89,10 +93,13 @@ class GSENN(nn.Module):
         if len(h_x_labeled.size()) == 4:
             h_x_labeled = h_x_labeled.view(h_x_labeled.size(0), h_x.size(1), -1)
 
-        # store (known+unknown) concepts
-        self.concepts = torch.cat((h_x_labeled,h_x),dim=1)
-        # store known concepts
-        self.concepts_labeled = h_x_labeled
+        if not self.senn:
+            # store (known+unknown) concepts
+            self.concepts = torch.cat((h_x_labeled,h_x),dim=1)
+            # store known concepts
+            self.concepts_labeled = h_x_labeled
+        else:
+            self.concepts = h_x
 
 
         if DEBUG:
@@ -100,6 +107,10 @@ class GSENN(nn.Module):
             print('thetas: ', thetas.size())
 
             
-        out = self.aggregator(self.concepts, thetas)
+        # if you use cbm, aggregator does not use unknown concepts, even if you define it
+        if self.cbm:
+            out = self.aggregator(self.concepts_labeled, thetas)
+        else:
+            out = self.aggregator(self.concepts, thetas)
 
         return out

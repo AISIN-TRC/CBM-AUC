@@ -167,25 +167,29 @@ class ClassificationTrainer():
         inputs: output of Faster RCNN
         all_losses: loss file (saving all losses to print)
         concepts: correct concepts
+        cbm: flag whether use CBM's model or not
         epoch: the number of current epoch. Current version does not use. But if you want to make process using epoch, please use it.
     Returns:
         info_loss: loss weighed adding discrminator's loss and known concept loss
         hh_labeled_list: predicted known concepts        
     """    
-    def concept_learning_loss_for_weak_supervision(self, inputs, all_losses, concepts, epoch):
+    def concept_learning_loss_for_weak_supervision(self, inputs, all_losses, concepts, cbm, senn, epoch):
 
         # compute predicted known concepts by inputs
         # real uses the discriminator's loss
         hh_labeled_list, h_x, real = self.model.conceptizer(inputs)
 
-        # compute losses of known concepts            
-        labeled_loss = F.binary_cross_entropy(hh_labeled_list[0], concepts[0].to(self.device))
-        for i in range(1,len(hh_labeled_list)):
-            labeled_loss = labeled_loss + F.binary_cross_entropy(hh_labeled_list[i], concepts[i].to(self.device))
+        
+        if not senn:
 
-        #MSE loss version for known concepts
-        #labeled_loss = F.mse_loss(hh_labeled_list,concepts)
-        #labeled_loss = labeled_loss*len(concepts[0])        
+            # compute losses of known concepts            
+            labeled_loss = F.binary_cross_entropy(hh_labeled_list[0], concepts[0].to(self.device))
+            for i in range(1,len(hh_labeled_list)):
+                labeled_loss = labeled_loss + F.binary_cross_entropy(hh_labeled_list[i], concepts[i].to(self.device))
+
+            #MSE loss version for known concepts
+            #labeled_loss = F.mse_loss(hh_labeled_list,concepts)
+            #labeled_loss = labeled_loss*len(concepts[0])        
     
         
         """
@@ -193,31 +197,41 @@ class ClassificationTrainer():
         Discriminator's architecture is inspired by the global DeepInfoMax model.
         DeepInfoMax@ICLR2019: https://arxiv.org/pdf/1808.06670.pdf
         """
-        Tensor = torch.cuda.FloatTensor if self.cuda else torch.FloatTensor
+        if not cbm:            
 
-        labs_real = Variable(Tensor(inputs.size(0), 1).fill_(1.0), requires_grad=False).to(self.device)
-        labs_fake = Variable(Tensor(inputs.size(0), 1).fill_(0.0), requires_grad=False).to(self.device)
+            Tensor = torch.cuda.FloatTensor if self.cuda else torch.FloatTensor
 
-        # main loss
+            labs_real = Variable(Tensor(inputs.size(0), 1).fill_(1.0), requires_grad=False).to(self.device)
+            labs_fake = Variable(Tensor(inputs.size(0), 1).fill_(0.0), requires_grad=False).to(self.device)
 
-        # select random index
-        rand_index = torch.randperm(h_x.size()[0]).cuda(self.device)
+            # main loss
+            
+            # select random index
+            rand_index = torch.randperm(h_x.size()[0]).cuda(self.device)
 
-        # compute fake data (concate[rand_inputs, known_conepts, unknown_concepts]) and output of the discriminator
-        fake = self.model.conceptizer.decode(inputs[rand_index], hh_labeled_list, h_x)
+            # compute fake data (concate[rand_inputs, known_conepts, unknown_concepts]) and output of the discriminator
+            fake = self.model.conceptizer.decode(inputs[rand_index], hh_labeled_list, h_x)
+            
+            """
+            compute loss
+            if you use DeepInfoMax loss, please remove the comment outs
+            """
+            info_loss = self.gamma*(F.mse_loss(real, labs_real) + F.mse_loss(fake, labs_fake))
 
-        """
-        compute loss
-        if you use DeepInfoMax loss, please remove the comment outs
-        """
-        info_loss = self.gamma*(F.mse_loss(real, labs_real) + F.mse_loss(fake, labs_fake))
+            # save loss (only value) to the all_losses list
+            all_losses['info'] = info_loss.data.cpu().numpy()
+            
 
-        # save loss (only value) to the all_losses list
-        all_losses['info'] = info_loss.data.cpu().numpy()
-        info_loss += self.eta*labeled_loss
+        if cbm: # Standard CBM does not use decoder
+            info_loss = self.eta*labeled_loss
+        elif senn:
+            info_loss = info_loss
+        else:
+            info_loss += self.eta*labeled_loss
                 
-        # save loss (only value) to the all_losses list
-        all_losses['labeled_h'] = labeled_loss.data.cpu().numpy()
+        if not senn:
+            # save loss (only value) to the all_losses list
+            all_losses['labeled_h'] = labeled_loss.data.cpu().numpy()
 
         # use in def train_batch (class GradPenaltyTrainer)
         return info_loss, hh_labeled_list
@@ -279,26 +293,34 @@ class ClassificationTrainer():
             losses.update(loss.data.cpu().numpy(), pretrained_out.size(0))
             top1.update(prec1[0], pretrained_out.size(0))
              
-            # measure accuracy of concepts
-            err = self.concept_error(hh_labeled.data, concepts)
+            if not self.args.senn:                
+                # measure accuracy of concepts
+                err = self.concept_error(hh_labeled.data, concepts)
 
-            # update print's value
-            topc1.update(err, pretrained_out.size(0))
+                # update print's value
+                topc1.update(err, pretrained_out.size(0))
                 
             # measure elapsed time
             batch_time.update(time.time() - end)
             end = time.time()
 
 
-            # print values of i-th iteration in the current epoch
-            if i % self.print_freq == 0:
-                print('Epoch: [{0}][{1}/{2}]  '
-                      'Time {batch_time.val:.2f} ({batch_time.avg:.2f})  '
-                      'Loss {loss.val:.4f} ({loss.avg:.4f})  '
-                      'Prec@1 {top1.val:.3f} ({top1.avg:.3f})  '
-                      'Err@c1 {topc1.val:.3f} ({topc1.avg:.3f})'.format(
-                       epoch, i, len(train_loader), batch_time=batch_time,
-                       data_time=data_time, loss=losses, top1=top1, topc1=topc1))
+            if not self.args.senn:
+                # print values of i-th iteration in the current epoch
+                if i % self.print_freq == 0:
+                    print('Epoch: [{0}][{1}/{2}]  '
+                          'Time {batch_time.val:.2f} ({batch_time.avg:.2f})  '
+                          'Loss {loss.val:.4f} ({loss.avg:.4f})  '.format(
+                           epoch, i, len(train_loader), batch_time=batch_time,
+                           data_time=data_time, loss=losses))
+            else:
+                # print values of i-th iteration in the current epoch
+                if i % self.print_freq == 0:
+                    print('Epoch: [{0}][{1}/{2}]  '
+                          'Time {batch_time.val:.2f} ({batch_time.avg:.2f})  '
+                          'Loss {loss.val:.4f} ({loss.avg:.4f})  '.format(
+                           epoch, i, len(train_loader), batch_time=batch_time,
+                           data_time=data_time, loss=losses))
 
         # optimizer's schedule update based on epoch
         self.scheduler.step(epoch) 
@@ -358,28 +380,31 @@ class ClassificationTrainer():
                         
             # measure accuracy of concepts
             hh_labeled, _, _ = self.model.conceptizer(pretrained_out)
-            err = self.concept_error(hh_labeled.data, concepts)
+            if not self.args.senn:
+                err = self.concept_error(hh_labeled.data, concepts)
 
-            # update print's value
-            topc1.update(err, pretrained_out.size(0))
-
+                # update print's value
+                topc1.update(err, pretrained_out.size(0))
+                        
             # measure elapsed time
             batch_time.update(time.time() - end)
             end = time.time()
 
-            # print values of i-th iteration in the current epoch
-            if i % self.print_freq == 0:
-                print('Test: [{0}/{1}]\t'
-                      'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                      'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                      'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                      'Err@c1 {topc1.val:.3f} ({topc1.avg:.3f})'.format(
-                       i, len(val_loader), batch_time=batch_time, loss=losses,
-                       top1=top1, topc1=topc1))
+            if not self.args.senn:
+                # print values of i-th iteration in the current epoch
+                if i % self.print_freq == 0:
+                    print('Val: [{0}/{1}]\t'
+                          'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                          'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(
+                           i, len(val_loader), batch_time=batch_time, loss=losses))
+            else:
+                # print values of i-th iteration in the current epoch
+                if i % self.print_freq == 0:
+                    print('Val: [{0}/{1}]\t'
+                          'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                          'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(
+                           i, len(val_loader), batch_time=batch_time, loss=losses))
 
-        # print total values of each epoch
-        print(' * Prec@1 {top1.avg:.3f} Err@c1 {topc1.avg:.3f}'
-              .format(top1=top1, topc1=topc1))
 
         # top1.avg: use whether models save or not
         return top1.avg
@@ -442,61 +467,88 @@ class ClassificationTrainer():
 
             # measure accuracy of concepts
             hh_labeled, hh, _ = self.model.conceptizer(pretrained_out)
-            err = self.concept_error(hh_labeled.data, concepts)
+            if not self.args.senn:
+                err = self.concept_error(hh_labeled.data, concepts)
 
-            # update print's value
-            topc1.update(err, pretrained_out.size(0))
+                # update print's value
+                topc1.update(err, pretrained_out.size(0))
             
             # measure elapsed time
             batch_time.update(time.time() - end)
             end = time.time()
 
-            # if you use gpu, send results to cpu
-            if self.cuda:
-                pred_labels = output.data.to("cpu")
-                #pred_labels = np.argmax(output.data.to("cpu"), axis=1)
-                concept_labels = hh_labeled.data.to("cpu")
-                concept_nolabels = hh.data.to("cpu")
-                attr = concepts.data.to("cpu")
+            if not self.args.senn:
+                # if you use gpu, send results to cpu
+                if self.cuda:
+                    pred_labels = output.data.to("cpu")
+                    #pred_labels = np.argmax(output.data.to("cpu"), axis=1)
+                    concept_labels = hh_labeled.data.to("cpu")
+                    concept_nolabels = hh.data.to("cpu")
+                    attr = concepts.data.to("cpu")
+                else:
+                    pred_labels = output.data
+                    concept_labels = hh_labeled
+                    concept_nolabels = hh
+                    attr = concepts
+
+
+                # save to the file
+                for j in range(len(targets)):
+                    for k in range(len(targets[0])):
+                        fp.write("%f,"%(targets[j][k]))
+                        #fp.write("%d,%d,"%(targets[j][k],pred_labels[j][k]))
+                    for k in range(len(pred_labels[0])):
+                        fp.write("%f,"%(pred_labels[j][k]))
+                    for k in range(concept_labels.shape[1]):
+                        fp.write("%f,"%(concept_labels[j][k]))
+                    for k in range(concept_nolabels.shape[1]):
+                        fp.write("%f,"%(concept_nolabels[j][k]))
+                    fp.write(",")
+                    for k in range(attr.shape[1]):
+                        fp.write("%f,"%(attr[j][k]))
+                    fp.write("\n")
+
+                # print values of i-th iteration
+                if i % self.print_freq == 0:
+                    print('Test: [{0}/{1}]\t'
+                          'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                          'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(
+                           i, len(test_loader), batch_time=batch_time, loss=losses))
+
             else:
-                pred_labels = output.data
-                concept_labels = hh_labeled
-                concept_nolabels = hh
-                attr = concepts
+                # if you use gpu, send results to cpu
+                if self.cuda:
+                    pred_labels = output.data.to("cpu")
+                    #pred_labels = np.argmax(output.data.to("cpu"), axis=1)
+                    concept_nolabels = hh.data.to("cpu")
+                    attr = concepts.data.to("cpu")
+                else:
+                    pred_labels = output.data
+                    concept_nolabels = hh
+                    attr = concepts
 
+                # save to the file
+                for j in range(len(targets)):
+                    for k in range(len(targets[0])):
+                        fp.write("%f,"%(targets[j][k]))
+                        #fp.write("%d,%d,"%(targets[j][k],pred_labels[j][k]))
+                    for k in range(len(pred_labels[0])):
+                        fp.write("%f,"%(pred_labels[j][k]))
+                    for k in range(concept_nolabels.shape[1]):
+                        fp.write("%f,"%(concept_nolabels[j][k]))
+                    fp.write(",")
+                    for k in range(attr.shape[1]):
+                        fp.write("%f,"%(attr[j][k]))
+                    fp.write("\n")
 
-            # save to the file
-            for j in range(len(targets)):
-                for k in range(len(targets[0])):
-                    fp.write("%f,"%(targets[j][k]))
-                    #fp.write("%d,%d,"%(targets[j][k],pred_labels[j][k]))
-                for k in range(len(pred_labels[0])):
-                    fp.write("%f,"%(pred_labels[j][k]))
-                for k in range(concept_labels.shape[1]):
-                    fp.write("%f,"%(concept_labels[j][k]))
-                for k in range(concept_nolabels.shape[1]):
-                    fp.write("%f,"%(concept_nolabels[j][k]))
-                fp.write(",")
-                for k in range(attr.shape[1]):
-                    fp.write("%f,"%(attr[j][k]))
-                fp.write("\n")
+                
+                # print values of i-th iteration
+                if i % self.print_freq == 0:
+                    print('Test: [{0}/{1}]\t'
+                          'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                          'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(
+                           i, len(test_loader), batch_time=batch_time, loss=losses))
 
-            # print values of i-th iteration
-            if i % self.print_freq == 0:
-                print('Test: [{0}/{1}]\t'
-                      'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                      'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                      'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                      'Err@c1 {topc1.val:.3f} ({topc1.avg:.3f})'.format(
-                       i, len(test_loader), batch_time=batch_time, loss=losses,
-                       top1=top1, topc1=topc1))
-
-
-        # print total values of each epoch
-        print(' * Prec@1 {top1.avg:.3f} Err@c1 {topc1.avg:.3f}'
-              .format(top1=top1, topc1=topc1))
-        fp.write(' * Prec@1 {top1.avg:.3f} Err@c1 {topc1.avg:.3f}'
-              .format(top1=top1, topc1=topc1))
 
         # close the save_file_name
         fp.close()
@@ -721,7 +773,7 @@ class GradPenaltyTrainer(ClassificationTrainer):
         all_losses = {'prediction': pred_loss.cpu().data.numpy()}
             
         # compute loss of known concets and discriminator
-        h_loss, hh_labeled = self.concept_learning_loss_for_weak_supervision(pretrained_out, all_losses, concepts, epoch)
+        h_loss, hh_labeled = self.concept_learning_loss_for_weak_supervision(pretrained_out, all_losses, concepts, self.args.cbm, self.args.senn, epoch)
 
         # to be simplify, redifine
         inputs = pretrained_out

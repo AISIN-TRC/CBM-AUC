@@ -90,7 +90,7 @@ class image_fcc_conceptizer(AutoEncoder):
     Return:
         None
     """
-    def __init__(self, din, nconcept, nconcept_labeled, cdim, sparsity):
+    def __init__(self, din, nconcept, nconcept_labeled, cdim, sparsity, senn):
         super(image_fcc_conceptizer, self).__init__()
         
         # set self hyperparameters
@@ -103,6 +103,8 @@ class image_fcc_conceptizer(AutoEncoder):
         
         self.nconcept = nconcept   # Number of all concepts
         self.nconcept_labeled = nconcept_labeled # Number of unknown concepts
+
+        self.senn = senn # flag of senn
      
         
         """
@@ -111,8 +113,11 @@ class image_fcc_conceptizer(AutoEncoder):
         self.enc2: encoder for unknown concepts
         """
 
-        self.enc1 = nn.Linear(self.din, self.nconcept_labeled)
-        self.enc2 = nn.Linear(self.din, self.nconcept-self.nconcept_labeled)
+        if senn == True:
+            self.enc = nn.Linear(self.din, self.nconcept)
+        else:
+            self.enc1 = nn.Linear(self.din, self.nconcept_labeled)
+            self.enc2 = nn.Linear(self.din, self.nconcept-self.nconcept_labeled)
 
 
         # discriminator (DeepInfoMax; to maximize the mutual information)
@@ -136,23 +141,45 @@ class image_fcc_conceptizer(AutoEncoder):
         # resize
         p = x.view(x.size(0), -1)
 
-        # compute known concepts, we find thatleaky_relu was the best activation
 
-        encoded_1 = F.leaky_relu(self.enc1(p))
+        if self.senn == True:
+            # compute unknown concepts
+            encoded = self.enc(p)
+            
+        
+            #kWTA: https://github.com/a554b554/kWTA-Activation/
+            k = self.sparsity
+            topval = encoded.topk(k,dim=1)[0][:,-1]
+            topval = topval.expand(encoded.shape[1],encoded.shape[0]).permute(1,0)
+            comp = (encoded>=topval).to(encoded)
+            encoded = comp*encoded
+            
+            # reshape for the following process
+            encoded = encoded.reshape([encoded.shape[0],encoded.shape[1],1])
+            
+            # aling the return's shape
+            encoded_1 = encoded
+            encoded_2 = encoded
+            
 
+        else:
+            # compute known concepts, we find thatleaky_relu was the best activation
+            
+            encoded_1 = F.leaky_relu(self.enc1(p))
 
-        # compute unknown concepts
-        encoded_2 = self.enc2(p)
+            
+            # compute unknown concepts
+            encoded_2 = self.enc2(p)
 
-        #kWTA: https://github.com/a554b554/kWTA-Activation/
-        k = self.sparsity
-        topval = encoded_2.topk(k,dim=1)[0][:,-1]
-        topval = topval.expand(encoded_2.shape[1],encoded_2.shape[0]).permute(1,0)
-        comp = (encoded_2>=topval).to(encoded_2)
-        encoded_2 = comp*encoded_2
-
-        # reshape for the following process
-        encoded_2 = encoded_2.reshape([encoded_2.shape[0],encoded_2.shape[1],1])
+            #kWTA: https://github.com/a554b554/kWTA-Activation/
+            k = self.sparsity
+            topval = encoded_2.topk(k,dim=1)[0][:,-1]
+            topval = topval.expand(encoded_2.shape[1],encoded_2.shape[0]).permute(1,0)
+            comp = (encoded_2>=topval).to(encoded_2)
+            encoded_2 = comp*encoded_2
+            
+            # reshape for the following process
+            encoded_2 = encoded_2.reshape([encoded_2.shape[0],encoded_2.shape[1],1])
             
         return encoded_1, encoded_2
         
@@ -174,8 +201,11 @@ class image_fcc_conceptizer(AutoEncoder):
         
 
         # reshape for concatenate (known and unknown concepts)
-        z2 = z2.reshape([z2.shape[0],z2.shape[1]])
-        z  = torch.cat((z1_list,z2),dim=1)
+        if self.senn == True:
+            z = z2.reshape([z2.shape[0],z2.shape[1]])
+        else:
+            z2 = z2.reshape([z2.shape[0],z2.shape[1]])
+            z  = torch.cat((z1_list,z2),dim=1)
 
         # concatenate (encoded output and predicted concepts)
         z = torch.cat((x,z),dim=1)

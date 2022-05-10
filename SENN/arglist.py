@@ -39,6 +39,8 @@ def get_senn_parser():
     ### Model
 
     # Concept Encoder (H)
+    parser.add_argument('--cbm', action='store_true', default=False, help='type of conceptizer (learnt or input)' ) # newly added 
+    parser.add_argument('--senn', action='store_true', default=False, help='type of conceptizer (learnt or input)' ) # newly added 
     parser.add_argument('--h_type', type=str, default='cnn', help='type of conceptizer (learnt or input)' ) # Don's change!!
     parser.add_argument('--concept_dim', type=int, default=1, help='concept dimension. dont change')
     parser.add_argument('--nconcepts_labeled', type=int, default=6, help='number of labeled concepts') # newly added
@@ -111,6 +113,8 @@ def parse_args():
 
 
     # model
+    parser.add_argument('--cbm', action='store_true', default=False, help='type of conceptizer (learnt or input)' ) # newly added
+    parser.add_argument('--senn', action='store_true', default=False, help='type of conceptizer (learnt or input)' ) # newly added
     parser.add_argument('--h_type', type=str, default='cnn', help='type of conceptizer (learnt or input)' )
     #parser.add_argument('--learn_h', type='str', default='learnt', help='type of conceptizer (learnt or input)' )
 
