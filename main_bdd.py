@@ -36,7 +36,7 @@ from BDD.template_model import RCNN_global
 from models import GSENN
 from conceptizers_BDD import image_fcc_conceptizer, image_cnn_conceptizer
 from parametrizers import image_parametrizer, dfc_parametrizer
-from aggregators import additive_scalar_aggregator, CBM_aggregator
+from aggregators_BDD import additive_scalar_aggregator, CBM_aggregator
 from trainers_BDD import GradPenaltyTrainer
 
 

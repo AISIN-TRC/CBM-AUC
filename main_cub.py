@@ -37,7 +37,7 @@ from CUB.template_model import inception_v3
 from models import GSENN
 from conceptizers_CUB import image_fcc_conceptizer, image_cnn_conceptizer
 from parametrizers import image_parametrizer, dfc_parametrizer
-from aggregators import additive_scalar_aggregator, CBM_aggregator
+from aggregators_CUB import additive_scalar_aggregator, CBM_aggregator
 from trainers_CUB import GradPenaltyTrainer
 
 
